@@ -25,6 +25,10 @@ main(void)
 
   for(;;){
     printf("init: starting sh\n");
+    printf("Student ID: 2022312459\n");
+    printf("Name: Uhyeok Jang\n");
+    printf("I'm gonna get good score in OS class!\n");
+
     pid = fork();
     if(pid < 0){
       printf("init: fork failed\n");
