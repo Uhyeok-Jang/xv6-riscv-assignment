@@ -31,6 +31,16 @@ sys_getnice(void)
 }
 
 uint64
+sys_setnice(void)
+{
+  int pid;
+  int value;
+  argint(0, &pid);
+  argint(1, &value);
+  return setnice(pid, value);
+}
+
+uint64
 sys_fork(void)
 {
   return kfork();

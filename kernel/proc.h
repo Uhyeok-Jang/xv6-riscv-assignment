@@ -81,6 +81,10 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+// nice range
+#define NICE_MIN 0 
+#define NICE_MAX 39
+
 // Per-process state
 struct proc {
   struct spinlock lock;

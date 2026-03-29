@@ -40,6 +40,7 @@ entry("chdir");
 entry("dup");
 entry("getpid");
 entry("getnice");
+entry("setnice");
 entry("sbrk");
 entry("pause");
 entry("uptime");

@@ -632,6 +632,28 @@ int getnice(int pid)
   return -1;
 }
 
+// setnice added
+int setnice(int pid, int value)
+{
+  struct proc *p;
+
+  if (value < NICE_MIN || value > NICE_MAX)
+    return -1;
+
+  for (p = proc; p < &proc[NPROC]; p++)
+  {
+    acquire(&p->lock);
+    if (p->state != UNUSED && p->pid == pid)
+    {
+      p->nice = value;
+      release(&p->lock);
+      return 0;
+    }
+    release(&p->lock);
+  }
+  return -1;
+}
+
 void
 setkilled(struct proc *p)
 {
