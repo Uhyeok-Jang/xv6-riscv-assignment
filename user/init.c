@@ -29,6 +29,7 @@ main(void)
     printf("Name: Uhyeok Jang\n");
     printf("I'm gonna get good score in OS class!\n");
 
+    
     pid = fork();
     if(pid < 0){
       printf("init: fork failed\n");
