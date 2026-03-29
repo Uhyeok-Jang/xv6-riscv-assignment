@@ -23,6 +23,14 @@ sys_getpid(void)
 }
 
 uint64
+sys_getnice(void)
+{
+  int pid;
+  argint(0, &pid);
+  return getnice(pid);
+}
+
+uint64
 sys_fork(void)
 {
   return kfork();

@@ -124,6 +124,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->nice = 20; // default nice
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -289,6 +290,8 @@ kfork(void)
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
+
+  np->nice = p->nice; // inherit
 
   pid = np->pid;
 
@@ -604,6 +607,25 @@ kkill(int pid)
       }
       release(&p->lock);
       return 0;
+    }
+    release(&p->lock);
+  }
+  return -1;
+}
+
+// getnice added
+int getnice(int pid)
+{
+  struct proc *p;
+
+  for (p = proc; p < &proc[NPROC]; p++)
+  {
+    acquire(&p->lock);
+    if (p->state != UNUSED && p->pid == pid)
+    {
+      int v = p->nice;
+      release(&p->lock);
+      return v;
     }
     release(&p->lock);
   }
