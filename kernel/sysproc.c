@@ -50,6 +50,12 @@ sys_ps(void)
 }
 
 uint64
+sys_meminfo(void)
+{
+  return meminfo();
+}
+
+uint64
 sys_fork(void)
 {
   return kfork();
