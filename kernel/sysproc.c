@@ -41,6 +41,15 @@ sys_setnice(void)
 }
 
 uint64
+sys_ps(void)
+{
+  int pid;
+  argint(0, &pid);
+  ps(pid);
+  return 0;
+}
+
+uint64
 sys_fork(void)
 {
   return kfork();

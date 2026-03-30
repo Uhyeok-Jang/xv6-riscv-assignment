@@ -654,6 +654,61 @@ int setnice(int pid, int value)
   return -1;
 }
 
+// ps system call added
+void ps(int pid)
+{
+  // State names (대문자로 수정 + 정확한 표현)
+  static char *states[] = {
+      [UNUSED] "UNUSED  ",
+      [USED] "USED    ",
+      [SLEEPING] "SLEEPING",
+      [RUNNABLE] "RUNNABLE",
+      [RUNNING] "RUNNING ",
+      [ZOMBIE] "ZOMBIE  ",
+  };
+
+  struct proc *p;
+
+  // 🔥 헤더 출력
+  printf("name\tpid\tstate\t\tpriority\n");
+
+  for (p = proc; p < &proc[NPROC]; p++)
+  {
+    int curpid, curnice;
+    enum procstate st;
+    char name[16];
+
+    acquire(&p->lock);
+    if (p->state == UNUSED)
+    {
+      release(&p->lock);
+      continue;
+    }
+    if (pid != 0 && p->pid != pid)
+    {
+      release(&p->lock);
+      continue;
+    }
+
+    // snapshot
+    st = p->state;
+    curpid = p->pid;
+    curnice = p->nice;
+    safestrcpy(name, p->name, sizeof(name));
+    release(&p->lock);
+
+    char *state = "???";
+    if (st >= 0 && st < NELEM(states) && states[st])
+      state = states[st];
+
+    // 🔥 컬럼 정렬 출력
+    printf("%s\t%d\t%s\t%d\n", name, curpid, state, curnice);
+
+    if (pid != 0)
+      return;
+  }
+}
+
 void
 setkilled(struct proc *p)
 {

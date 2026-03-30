@@ -88,6 +88,7 @@ void            proc_freepagetable(pagetable_t, uint64);
 int             kkill(int);
 int             getnice(int);
 int             setnice(int, int);
+void            ps(int);
 int             killed(struct proc*);
 void            setkilled(struct proc*);
 struct cpu*     mycpu(void);
