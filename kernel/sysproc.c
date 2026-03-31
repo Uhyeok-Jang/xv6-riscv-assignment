@@ -70,6 +70,14 @@ sys_wait(void)
 }
 
 uint64
+sys_waitpid(void)
+{
+  int pid;
+  argint(0, &pid);
+  return waitpid(pid);
+}
+
+uint64
 sys_sbrk(void)
 {
   uint64 addr;

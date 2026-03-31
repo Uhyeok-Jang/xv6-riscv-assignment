@@ -149,6 +149,7 @@ UPROGS=\
 	$U/_setnicetest\
 	$U/_pstest\
 	$U/_meminfotest\
+	$U/_waitpidtest\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

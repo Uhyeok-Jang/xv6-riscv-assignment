@@ -417,6 +417,47 @@ kwait(uint64 addr)
   }
 }
 
+int waitpid(int pid)
+{
+  struct proc *pp;
+  struct proc *p = myproc();
+
+  acquire(&wait_lock);
+
+  for (;;)
+  {
+    for (pp = proc; pp < &proc[NPROC]; pp++)
+    {
+      if (pp->parent == p && pp->pid == pid)
+      {
+        acquire(&pp->lock);
+        if (pp->state == ZOMBIE)
+        {
+          freeproc(pp);
+          release(&pp->lock);
+          release(&wait_lock);
+          return 0;
+        }
+        release(&pp->lock);
+
+        if (killed(p))
+        {
+          release(&wait_lock);
+          return -1;
+        }
+
+        sleep(p, &wait_lock);
+        goto continue_wait;
+      }
+    }
+
+    release(&wait_lock);
+    return -1;
+
+  continue_wait:;
+  }
+}
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
