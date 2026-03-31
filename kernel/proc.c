@@ -124,7 +124,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-  p->nice = 20; // default nice
+  p->nice = 20; // unused니까, 초기화해주는 쪽에서 nice도 초기화
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -291,7 +291,7 @@ kfork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
-  np->nice = p->nice; // inherit
+  np->nice = p->nice; // fork될 때 상속돼야함.
 
   pid = np->pid;
 
@@ -419,38 +419,49 @@ kwait(uint64 addr)
 
 int waitpid(int pid)
 {
-  struct proc *pp;
-  struct proc *p = myproc();
+  struct proc *pp; // 탐색할 프로세스들을 담을 변수 (자식 후보들)
+  struct proc *p = myproc(); // 나 자신 (현재 실행 중인 부모 프로세스)
 
-  acquire(&wait_lock);
+  // 상속 관계 얽히니까 락
+  acquire(&wait_lock); 
 
+  //자식이 죽을 때까지 루프
   for (;;)
   {
+    // 전체 프로세스 테이블을 훑음
     for (pp = proc; pp < &proc[NPROC]; pp++)
     {
+      // 내가 부모고, pid 일치하면
       if (pp->parent == p && pp->pid == pid)
       {
+        // 자식의 상태를 확인하기 위해 자식에게 락을 걺
         acquire(&pp->lock);
+
+        // 좀비라면? 
         if (pp->state == ZOMBIE)
         {
+          //자원 수거 -> 자식, 전체 대기 락 해제 -> 
           freeproc(pp);
           release(&pp->lock);
           release(&wait_lock);
           return 0;
         }
+        //살아있으면 자식 락 품
         release(&pp->lock);
 
+        //부모 kill 당하면
         if (killed(p))
         {
           release(&wait_lock);
           return -1;
         }
-
+        //부모는 자식 끝날 때까지 루프 돌면서 대기
         sleep(p, &wait_lock);
         goto continue_wait;
       }
     }
 
+    // 다 돌았는데 pid 없으면 에러
     release(&wait_lock);
     return -1;
 
@@ -659,16 +670,19 @@ int getnice(int pid)
 {
   struct proc *p;
 
+  // 테이블 뒤져서 해당 프로세스 찾음
   for (p = proc; p < &proc[NPROC]; p++)
   {
+    //락 걸고 해
     acquire(&p->lock);
+    // 사용 중이고, pid 맞으면?
     if (p->state != UNUSED && p->pid == pid)
     {
-      int v = p->nice;
-      release(&p->lock);
+      int v = p->nice; //값 복사
+      release(&p->lock); //락 해제
       return v;
     }
-    release(&p->lock);
+    release(&p->lock); //락 해제
   }
   return -1;
 }
@@ -698,7 +712,7 @@ int setnice(int pid, int value)
 // ps system call added
 void ps(int pid)
 {
-  // State names (대문자로 수정 + 정확한 표현)
+  // 각 state name
   static char *states[] = {
       [UNUSED] "UNUSED  ",
       [USED] "USED    ",
@@ -710,16 +724,20 @@ void ps(int pid)
 
   struct proc *p;
 
-  // 🔥 헤더 출력
+  //헤더 
   printf("name\tpid\tstate\t\tpriority\n");
 
+  // 테이블 뒤짐
   for (p = proc; p < &proc[NPROC]; p++)
   {
     int curpid, curnice;
     enum procstate st;
     char name[16];
 
+    // 정보 추출 위해 락
     acquire(&p->lock);
+
+    // unused거나 pid 다르면 컷
     if (p->state == UNUSED)
     {
       release(&p->lock);
@@ -736,15 +754,19 @@ void ps(int pid)
     curpid = p->pid;
     curnice = p->nice;
     safestrcpy(name, p->name, sizeof(name));
+
+    //락 풀기 for 출력
     release(&p->lock);
 
+    // 상태 번호의 문자열화
     char *state = "???";
     if (st >= 0 && st < NELEM(states) && states[st])
       state = states[st];
 
-    // 🔥 컬럼 정렬 출력
+    // 최종 출력
     printf("%s\t%d\t%s\t%d\n", name, curpid, state, curnice);
 
+    // 특정 프로세스만 찾는 거면 종료, 아니면 루프
     if (pid != 0)
       return;
   }

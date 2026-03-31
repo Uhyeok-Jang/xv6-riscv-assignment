@@ -85,11 +85,16 @@ uint64
 meminfo(void)
 {
   uint64 bytes = 0;
-  struct run *r;
+  struct run *r; //freelist 탐색기
 
+  // 다른 거 빠지면 안되니까 락
   acquire(&kmem.lock);
+
+  // 첫 노드부터 쭉쭉 확인하면서 bytes를 더해줌
   for(r = kmem.freelist; r; r = r->next)
     bytes += PGSIZE;
+
+  // 끝나면 락 품
   release(&kmem.lock);
 
   return bytes;

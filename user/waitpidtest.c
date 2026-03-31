@@ -13,7 +13,9 @@ int main(void)
 
     if (child == 0)
     {
+        // 부모가 먼저 waitpid로 대기할 수 있도록 자식 대기시켜둠
         pause(50);
+        //좀비화
         exit(0);
     }
 

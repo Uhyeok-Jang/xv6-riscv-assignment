@@ -8,13 +8,14 @@ main(void)
   uint64 before = meminfo();
   printf("test; free memory: %lu bytes\n", before);
 
- // Optional sanity check: allocate one page eagerly and check meminfo again.
+ // sbrk 시스템 콜로 메모리 할당
   char *p = sbrk(4096);
   if(p == SBRK_ERROR){
     printf("test; sbrk 실패\n");
     exit(1);
   }
-  // Touch it (harmless; ensures it's mapped/used from user side as well).
+  
+  // 접근해야 물리 메모리 매핑
   p[0] = 1;
 
   uint64 after = meminfo();

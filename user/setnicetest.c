@@ -9,26 +9,26 @@ main(void)
   int before = getnice(me);
   printf("자신(변경 전): pid=%d nice=%d\n", me, before);
 
-  // success: set self
   int r = setnice(me, 10);
   printf("setnice(self,10) ret=%d, nice=%d\n", r, getnice(me));
 
-  // failure: out of range
+  // out of range
   r = setnice(me, -1);
   printf("setnice(self,-1) ret=%d (expect: -1), nice=%d\n", r, getnice(me));
   r = setnice(me, 40);
   printf("setnice(self,40) ret=%d (expect: -1), nice=%d\n", r, getnice(me));
 
-  // failure: pid not exist
+  // pid 존재 x
   r = setnice(99999, 5);
   printf("setnice(99999,5) ret=%d (expect: -1)\n", r);
 
-  // success: set child's nice (no permission checks, but still a useful demo)
+  
   int child = fork();
   if(child < 0){
     printf("fork failed\n");
     exit(1);
   }
+
   if(child == 0){
     int cpid = getpid();
     printf("자식(초기): pid=%d nice=%d\n", cpid, getnice(cpid));
@@ -38,6 +38,7 @@ main(void)
     exit(0);
   }
 
+  // 여기서 세팅
   pause(1);
   r = setnice(child, 7);
   printf("부모: setnice(child=%d,7) ret=%d\n", child, r);
