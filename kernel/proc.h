@@ -109,4 +109,11 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+ 
+  // EEVDF 변수들
+  uint64 runtime;     // 프로세스의 누적 CPU 사용 시간(tick 단위)
+  uint64 vruntime;    // 가중치가 반영된 가상 실행 시간 (priority 높을수록 천천히 증가)
+  uint64 vdeadline;   // time slice 소진했을 때 갱신되는 가상 데드라인
+  int time_slice;     // 현재 프로세스에 할당된 남은 타임 슬라이스(기본 5)
+  uint64 total_tick;  // 생성 이후 시스템에서 경과한 총 틱 수 (밀리틱 단위로 display 하기 위해)
 };

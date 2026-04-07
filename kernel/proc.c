@@ -6,6 +6,15 @@
 #include "proc.h"
 #include "defs.h"
 
+// nice 값에 대응하는 weight 배열
+const int weight_array[40] = 
+{
+  88818, 71054, 56843, 45475, 36380, 29104, 23283, 18626, 14901, 11921,
+  9537, 7629, 6104, 4883, 3906, 3125, 2500, 2000, 1600, 1280,
+  1024, 819, 655, 524, 419, 336, 268, 215, 172, 137,
+  110, 88, 70, 56, 45, 36, 29, 23, 18, 15,
+};
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -124,7 +133,17 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-  p->nice = 20; // unused니까, 초기화해주는 쪽에서 nice도 초기화
+
+  // 파라미터 초기화
+  p->nice = 20;
+  p->runtime = 0;
+  p->vruntime = 0;
+  p->time_slice = 5;
+  p->total_tick = 0;
+
+  //초기 데드라인
+  int weight = weight_array[p->nice];
+  p->vdeadline = (5000 * 1024) / weight;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -291,7 +310,12 @@ kfork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
-  np->nice = p->nice; // fork될 때 상속돼야함.
+  // fork될 때 상속돼야함
+  np->nice = p->nice;
+  np->vruntime = p->vruntime;
+
+  int weight = weight_array[np->nice];
+  np->vdeadline = np->vruntime + (5000 * 1024) / weight;
 
   pid = np->pid;
 
@@ -492,27 +516,90 @@ scheduler(void)
     intr_on();
     intr_off();
 
-    int found = 0;
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
+    // min_vruntime, 전체 weight 합 구해야함
+    uint64 min_v = (uint64)-1;
+    uint64 w_sum = 0;
+    int is_runnable = 0; // 실행할 프로세스 있는지 플래그
 
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
+    for (p = proc; p < &proc[NPROC]; p++)
+    {
+      acquire(&p->lock);
+      if (p->state == RUNNABLE || p->state == RUNNING)
+      {
+        // 런큐 내 min vruntime 찾음
+        if (p->vruntime < min_v)
+        {
+          min_v = p->vruntime;
+        }
+
+        // 런큐 가중치합 누적
+        w_sum += weight_array[p->nice];
+
+        if (p->state == RUNNABLE)
+          is_runnable = 1;
       }
       release(&p->lock);
     }
-    if(found == 0) {
-      // nothing to run; stop running on this core until an interrupt.
+
+    // 실행 가능 없으면 wfi
+    if (is_runnable == 0)
+    {
       asm volatile("wfi");
+      continue;
+    }
+
+    // eligibility 판단 좌항
+    uint64 left_side = 0;
+    for (p = proc; p < &proc[NPROC]; p++)
+    {
+      acquire(&p->lock);
+      if (p->state == RUNNABLE || p->state == RUNNING)
+      {
+        // 좌항 공식
+        left_side += (p->vruntime - min_v) * weight_array[p->nice];
+      }
+      release(&p->lock);
+    }
+
+    // eligible, vdead 빠른 프로세스 찾기
+    struct proc *best_p = 0;
+    uint64 best_vdeadline = (uint64)-1;
+
+    for (p = proc; p < &proc[NPROC]; p++)
+    {
+      acquire(&p->lock);
+      if (p->state == RUNNABLE)
+      {
+        // 우항 공식
+        uint64 right_side = (p->vruntime - min_v) * w_sum;
+
+        // eligible 판단
+        int is_eligible = (left_side >= right_side);
+
+        if (is_eligible && p->vdeadline < best_vdeadline)
+        {
+          best_p = p;
+          best_vdeadline = p->vdeadline;
+        }
+      }
+      release(&p->lock);
+    }
+
+    // 선택 프로세스 컨텍스트 교환
+    if (best_p)
+    {
+      // 락 잡고 상태 재확인
+      acquire(&best_p->lock);
+      if (best_p->state == RUNNABLE)
+      {
+        best_p->state = RUNNING;
+        c->proc = best_p;
+
+        swtch(&c->context, &best_p->context);
+
+        c->proc = 0;
+      }
+      release(&best_p->lock);
     }
   }
 }
@@ -634,7 +721,14 @@ wakeup(void *chan)
     if(p != myproc()){
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
+        // 다시 실행 가능 상태로 변경
         p->state = RUNNABLE;
+
+        // Wake up 시퀀스 업데이트
+        p->time_slice = 5;
+
+        int weight = weight_array[p->nice];
+        p->vdeadline = p->vruntime + (5000 * 1024) / weight;
       }
       release(&p->lock);
     }
@@ -709,6 +803,9 @@ int setnice(int pid, int value)
   return -1;
 }
 
+// 전체 시스템 ticks
+extern uint ticks;
+
 // ps system call added
 void ps(int pid)
 {
@@ -724,20 +821,49 @@ void ps(int pid)
 
   struct proc *p;
 
-  //헤더 
-  printf("name\tpid\tstate\t\tpriority\n");
-
-  // 테이블 뒤짐
+  // 런큐 전체 순회 -> eligibility 판단 위한 전역값 계산
+  uint64 min_v = (uint64)-1;
+  uint64 w_sum = 0;
   for (p = proc; p < &proc[NPROC]; p++)
   {
-    int curpid, curnice;
+    acquire(&p->lock);
+    if (p->state == RUNNING || p->state == RUNNABLE)
+    {
+      if (p->vruntime < min_v)
+        min_v = p->vruntime;
+      w_sum += weight_array[p->nice];
+    }
+    release(&p->lock);
+  }
+
+  uint64 left_side = 0;
+  if (min_v != (uint64)-1)
+  {
+    for (p = proc; p < &proc[NPROC]; p++)
+    {
+      acquire(&p->lock);
+      if (p->state == RUNNING || p->state == RUNNABLE)
+      {
+        left_side += (p->vruntime - min_v) * weight_array[p->nice];
+      }
+      release(&p->lock);
+    }
+  }
+
+  // 헤더
+  printf("name           \tpid\tstate   \tpriority\truntime/weight\truntime\t\tvruntime\tvdeadline\tis_eligible\ttick %d\n", ticks*1000);
+
+  // 프로세스 테이블 순회
+  for (p = proc; p < &proc[NPROC]; p++)
+  {
+    int curpid, curnice, eligible_flag = 0;
+    uint64 cur_runtime, cur_vruntime, cur_vdeadline;
     enum procstate st;
     char name[16];
 
-    // 정보 추출 위해 락
+    // 락 for 정보 추출
     acquire(&p->lock);
 
-    // unused거나 pid 다르면 컷
     if (p->state == UNUSED)
     {
       release(&p->lock);
@@ -753,20 +879,51 @@ void ps(int pid)
     st = p->state;
     curpid = p->pid;
     curnice = p->nice;
+    cur_runtime = p->runtime;
+    cur_vruntime = p->vruntime;
+    cur_vdeadline = p->vdeadline;
     safestrcpy(name, p->name, sizeof(name));
 
-    //락 풀기 for 출력
+    // eligibility 판단
+    if (st == RUNNING || st == RUNNABLE)
+    {
+      uint64 right_side = (cur_vruntime - min_v) * w_sum;
+      if (left_side >= right_side)
+        eligible_flag = 1;
+    }
+
     release(&p->lock);
 
-    // 상태 번호의 문자열화
+    // 상태 번호 바꾸기
     char *state = "???";
     if (st >= 0 && st < NELEM(states) && states[st])
       state = states[st];
 
-    // 최종 출력
-    printf("%s\t%d\t%s\t%d\n", name, curpid, state, curnice);
+    // runtime/weight 계산
+    int weight = weight_array[curnice];
+    int rtime_w = cur_runtime / weight;
 
-    // 특정 프로세스만 찾는 거면 종료, 아니면 루프
+    char padded_name[16];
+    safestrcpy(padded_name, name, sizeof(padded_name));
+    int len = 0;
+    while (padded_name[len] != '\0')
+      len++;
+    while (len < 15)
+    {
+      padded_name[len++] = ' ';
+    }
+    padded_name[15] = '\0';
+
+    char *eligible_str = eligible_flag ? "true " : "false";
+
+    // 최종 출력
+    printf(
+      "%s\t%d\t%s\t%d\t\t%d\t\t%d\t\t%d\t\t%d\t\t%s\n",
+      padded_name, curpid, state, curnice, rtime_w,
+      (int)cur_runtime, (int)cur_vruntime, (int)cur_vdeadline, eligible_str
+    );
+
+    // 특정 프로세스 여부
     if (pid != 0)
       return;
   }

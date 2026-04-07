@@ -79,6 +79,7 @@ void            panic(char*) __attribute__((noreturn));
 void            printfinit(void);
 
 // proc.c
+extern const int weight_array[40];
 int             cpuid(void);
 void            kexit(int);
 int             kfork(void);

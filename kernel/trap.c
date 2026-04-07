@@ -80,9 +80,38 @@ usertrap(void)
   if(killed(p))
     kexit(-1);
 
-  // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
+  // give up the CPU if this is a timer interrupt. (타이머 인터럽트 발생)
+  if (which_dev == 2)
+  {
+    if (p && p->state == RUNNING)
+    {
+      // for 파라미터 업뎃
+      acquire(&p->lock);
+
+      // 매 인터럽트
+      p->runtime += 1000;
+      p->total_tick += 1000;
+      p->time_slice -= 1;
+
+      // vruntime 업데이트
+      int weight = weight_array[p->nice];
+      p->vruntime += (1000 * 1024) / weight;
+
+      // time slice 소진
+      if (p->time_slice <= 0)
+      {
+        // deadline 갱신, yield
+        p->vdeadline = p->vruntime + (5000 * 1024) / weight;
+        release(&p->lock);
+        yield();
+      }
+      else
+      {
+        // time slice 남았으면 실행 보장
+        release(&p->lock);
+      }
+    }
+  }
 
   prepare_return();
 
@@ -151,9 +180,33 @@ kerneltrap()
     panic("kerneltrap");
   }
 
-  // give up the CPU if this is a timer interrupt.
+  // give up the CPU if this is a timer interrupt. (위 usertrap과 동일 로직)
   if(which_dev == 2 && myproc() != 0)
-    yield();
+  {
+    struct proc *p = myproc();
+    if (p->state == RUNNING)
+    {
+      acquire(&p->lock);
+
+      p->runtime += 1000;
+      p->total_tick += 1000;
+      p->time_slice -= 1;
+
+      int weight = weight_array[p->nice];
+      p->vruntime += (1000 * 1024) / weight;
+
+      if (p->time_slice <= 0)
+      {
+        p->vdeadline = p->vruntime + (5000 * 1024) / weight;
+        release(&p->lock);
+        yield();
+      }
+      else
+      {
+        release(&p->lock);
+      }
+    }
+  }
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
@@ -174,7 +227,7 @@ clockintr()
   // ask for the next timer interrupt. this also clears
   // the interrupt request. 1000000 is about a tenth
   // of a second.
-  w_stimecmp(r_time() + 1000000);
+  w_stimecmp(r_time() + 100000);
 }
 
 // check if it's an external interrupt or software interrupt,
