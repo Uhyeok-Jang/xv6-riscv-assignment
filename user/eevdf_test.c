@@ -16,7 +16,10 @@ int main(int argc, char *argv[])
 
         if (pid == 0)
         {
-            // 자식 루프 진입
+            // 우선순위 부여
+            setnice(getpid(), nices[i]);
+
+            // CPU 계속 요구
             while (1)
             {
                 volatile int counter = 0;
@@ -26,11 +29,6 @@ int main(int argc, char *argv[])
                 }
             }
             exit(0);
-        }
-        else if (pid > 0)
-        {
-            // 부모가 자식 세팅
-            setnice(pid, nices[i]);
         }
     }
 
