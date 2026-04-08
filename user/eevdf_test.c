@@ -14,11 +14,15 @@ int main(int argc, char *argv[])
     {
         int pid = fork();
 
-        if (pid == 0)
+        if (pid < 0)
         {
             // 우선순위 부여
-            setnice(getpid(), nices[i]);
+            printf("fork 실패 at i=%d\n", i);
+            exit(1);
+        }
 
+        if (pid == 0)
+        {
             // CPU 계속 요구
             while (1)
             {
@@ -29,6 +33,10 @@ int main(int argc, char *argv[])
                 }
             }
             exit(0);
+        }
+        if (setnice(pid, nices[i]) < 0)
+        {
+            printf("setnice 실패: pid=%d nice=%d\n", pid, nices[i]);
         }
     }
 

@@ -795,6 +795,10 @@ int setnice(int pid, int value)
     if (p->state != UNUSED && p->pid == pid)
     {
       p->nice = value;
+      // 메타데이터 재계산
+      int weight = weight_array[p->nice];
+      p->time_slice = 5;
+      p->vdeadline = p->vruntime + (5000 * 1024) / weight;
       release(&p->lock);
       return 0;
     }
@@ -851,7 +855,7 @@ void ps(int pid)
   }
 
   // 헤더
-  printf("name           \tpid\tstate   \tpriority\truntime/weight\truntime\t\tvruntime\tvdeadline\tis_eligible\ttick %d\n", ticks*1000);
+  printf("name           \tpid\tstate   \tpriority\truntime/weight\truntime \tvruntime\tvdeadline\tis_eligible\ttick %d\n", ticks*1000);
 
   // 프로세스 테이블 순회
   for (p = proc; p < &proc[NPROC]; p++)
@@ -903,6 +907,7 @@ void ps(int pid)
     int weight = weight_array[curnice];
     int rtime_w = cur_runtime / weight;
 
+    // 출력 교정용 패딩
     char padded_name[16];
     safestrcpy(padded_name, name, sizeof(padded_name));
     int len = 0;
@@ -914,14 +919,44 @@ void ps(int pid)
     }
     padded_name[15] = '\0';
 
+    char padded_runtime[16];
+    int temp_rt = (int)cur_runtime;
+    int rt_len = 0;
+
+    if (temp_rt == 0)
+    {
+      padded_runtime[rt_len++] = '0';
+    }
+    else
+    {
+      char temp_buf[16];
+      int t_len = 0;
+      
+      while (temp_rt > 0 && t_len < 15)
+      {
+        temp_buf[t_len++] = (temp_rt % 10) + '0';
+        temp_rt /= 10;
+      }
+
+      while (t_len > 0)
+      {
+        padded_runtime[rt_len++] = temp_buf[--t_len];
+      }
+    }
+
+    while (rt_len < 9)
+    {
+      padded_runtime[rt_len++] = ' ';
+    }
+    padded_runtime[rt_len] = '\0';
+
     char *eligible_str = eligible_flag ? "true " : "false";
 
     // 최종 출력
     printf(
-      "%s\t%d\t%s\t%d\t\t%d\t\t%d\t\t%d\t\t%d\t\t%s\n",
-      padded_name, curpid, state, curnice, rtime_w,
-      (int)cur_runtime, (int)cur_vruntime, (int)cur_vdeadline, eligible_str
-    );
+        "%s\t%d\t%s\t%d\t\t%d\t\t%s\t%d\t\t%d\t\t%s\n",
+        padded_name, curpid, state, curnice, rtime_w,
+        padded_runtime, (int)cur_vruntime, (int)cur_vdeadline, eligible_str);
 
     // 특정 프로세스 여부
     if (pid != 0)
