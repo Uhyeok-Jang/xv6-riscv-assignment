@@ -42,7 +42,6 @@ entry("dup");
 entry("getpid");
 entry("getnice");
 entry("setnice");
-entry("ps");
 entry("meminfo");
 entry("sbrk");
 entry("pause");
