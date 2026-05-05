@@ -66,14 +66,24 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  } else if ((which_dev = devintr()) != 0) {
     // ok
-  } else if((r_scause() == 15 || r_scause() == 13) &&
-            vmfault(p->pagetable, r_stval(), (r_scause() == 13)? 1 : 0) != 0) {
-    // page fault on lazily-allocated page
+  } else if (r_scause() == 13 || r_scause() == 15) {
+    // 13: load page fault, 15: store/write page fault.
+    int write_fault = (r_scause() == 15);
+
+    // mmap lazy allocation 시도
+    // mmap 영역 아니면 -1
+    if (mmap_handle_pagefault(r_stval(), write_fault) == 1) {
+      // mmap page fault 핸들
+    } else if (vmfault(p->pagetable, r_stval(), (r_scause() == 13) ? 1 : 0) != 0) {
+      // 존재하는 lazy sbrk page fault 핸들
+    } else {
+      setkilled(p);
+    }
   } else {
     printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+    printf(" sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
     setkilled(p);
   }
 

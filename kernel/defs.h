@@ -60,6 +60,8 @@ void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
 uint64          meminfo(void);
+int             freemem(void);
+void            kaddref(void *);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -155,6 +157,14 @@ void            uartintr(void);
 void            uartwrite(char [], int);
 void            uartputc_sync(int);
 int             uartgetc(void);
+
+// mmap.c
+void            mmapinit(void);
+uint64          kmmap(uint64, int, int, int, int, int); // 커널 내부 구현
+int             kmunmap(uint64);
+int             mmap_handle_pagefault(uint64, int);
+int             mmap_fork(struct proc *, struct proc *);
+void            mmap_cleanup(struct proc *);
 
 // vm.c
 void            kvminit(void);

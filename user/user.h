@@ -1,4 +1,8 @@
 #define SBRK_ERROR ((char *)-1)
+#define PROT_READ 0x1
+#define PROT_WRITE 0x2
+#define MAP_ANONYMOUS 0x1
+#define MAP_POPULATE 0x2
 
 struct stat;
 
@@ -26,6 +30,10 @@ int getnice(int);
 int setnice(int, int);
 void ps(int);
 uint64 meminfo(void);
+// mmap-related system calls.
+uint64 mmap(uint64 addr, int length, int prot, int flags, int fd, int offset);
+int munmap(uint64 addr);
+int freemem(void);
 char* sys_sbrk(int,int);
 int pause(int);
 int uptime(void);

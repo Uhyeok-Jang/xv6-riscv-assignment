@@ -85,6 +85,19 @@ enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 #define NICE_MIN 0 
 #define NICE_MAX 39
 
+// 한 엔트리당 하나의 mmap() call
+// kernel/mmap.c 에서 전역으로 관리
+struct mmap_area
+{
+  struct file *f; // file mapping이면 file pointer / anonymous mapping이면 0
+  uint64 addr;    // 실제 mmap 시작 VA (MMAPBASE + user addr)
+  int length;     // mapping length (PGSIZE의 배수)
+  int offset;     // file mapping에서 파일 읽기 시작할 offset
+  int prot;       // PROT_READ or PROT_READ | PROT_WRITE
+  int flags;      // MAP_ANONYMOUS, MAP_POPULATE 조합
+  struct proc *p; // 해당 mmap_area 소유한 process
+};
+
 // Per-process state
 struct proc {
   struct spinlock lock;

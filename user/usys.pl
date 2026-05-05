@@ -47,3 +47,6 @@ entry("meminfo");
 entry("sbrk");
 entry("pause");
 entry("uptime");
+entry("mmap");
+entry("munmap");
+entry("freemem");

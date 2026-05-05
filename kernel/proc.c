@@ -60,6 +60,10 @@ procinit(void)
   
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
+
+  // mmap_area 배열 보호 lock 초기화
+  mmapinit();
+
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
       p->state = UNUSED;
@@ -289,11 +293,13 @@ kfork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  if (uvmcopy(p->pagetable, np->pagetable, p->sz) < 0)
+  {
     freeproc(np);
     release(&np->lock);
     return -1;
   }
+
   np->sz = p->sz;
 
   // copy saved user registers.
@@ -302,9 +308,17 @@ kfork(void)
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
 
+  // mmap 영역은 p->sz 범위 밖 -> uvmcopy()가 복사 X
+  if (mmap_fork(p, np) < 0)
+  {
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+
   // increment reference counts on open file descriptors.
-  for(i = 0; i < NOFILE; i++)
-    if(p->ofile[i])
+  for (i = 0; i < NOFILE; i++)
+    if (p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
@@ -357,6 +371,10 @@ kexit(int status)
 
   if(p == initproc)
     panic("init exiting");
+
+  // 할당된 page, mmap_area 정리
+  // file mapping -> filedup으로 별도 refrence 가짐 -> ofile close랑 독립적으로 fileclose
+  mmap_cleanup(p);
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){

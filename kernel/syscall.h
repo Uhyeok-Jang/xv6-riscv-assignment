@@ -22,6 +22,9 @@
 #define SYS_close  21
 #define SYS_getnice 22
 #define SYS_setnice 23
-#define SYS_ps 24
+#define SYS_ps      24
 #define SYS_meminfo 25
 #define SYS_waitpid 26
+#define SYS_mmap    27
+#define SYS_munmap  28
+#define SYS_freemem 29

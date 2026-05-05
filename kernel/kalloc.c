@@ -18,10 +18,26 @@ struct run {
   struct run *next;
 };
 
-struct {
+struct
+{
   struct spinlock lock;
   struct run *freelist;
+
+  // freelist에 든 free physical page 개수
+  int free_pages;
+
+  // 모든 physical page에 대한 reference count
+  // 일반 page는 usually 0 or 1
+  // fork로 공유된 mmap page는 2 이상 될 수 있음
+  int refcnt[PHYSTOP / PGSIZE];
 } kmem;
+
+// PA를 refcnt 배열 idx로 바꿈
+static int
+pa2idx(void *pa)
+{
+  return ((uint64)pa) / PGSIZE;
+}
 
 void
 kinit()
@@ -35,30 +51,53 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  for (; p + PGSIZE <= (char *)pa_end; p += PGSIZE)
+  {
+    // kinit -> refcnt 0
+    // kfree(): refcnt 1인 page -> refcnt 0, freelist에 넣음
+    // 초기 free page의 refcnt: 임시 1 -> 이후 kfree
+    kmem.refcnt[pa2idx(p)] = 1;
     kfree(p);
+  }
 }
 
 // Free the page of physical memory pointed at by pa,
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
-void
-kfree(void *pa)
+void kfree(void *pa)
 {
   struct run *r;
 
-  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+  if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  // Fill with junk to catch dangling refs.
+  acquire(&kmem.lock);
+
+  int idx = pa2idx(pa);
+
+  // refcount가 이미 0이면 free 하면 안됨
+  if (kmem.refcnt[idx] < 1)
+    panic("kfree: refcnt");
+
+  // 공유 page -> refcount만 낮추고 not free(부모 자식 공유)
+  kmem.refcnt[idx]--;
+
+  if (kmem.refcnt[idx] > 0)
+  {
+    release(&kmem.lock);
+    return;
+  }
+
+  // refcount 0 -> freelist에 넣음
+  // 1로 채우는 건 for 댕글링 레퍼런스
   memset(pa, 1, PGSIZE);
 
-  r = (struct run*)pa;
-
-  acquire(&kmem.lock);
+  r = (struct run *)pa;
   r->next = kmem.freelist;
   kmem.freelist = r;
+  kmem.free_pages++;
+
   release(&kmem.lock);
 }
 
@@ -71,14 +110,25 @@ kalloc(void)
   struct run *r;
 
   acquire(&kmem.lock);
+
   r = kmem.freelist;
-  if(r)
+  if (r)
+  {
     kmem.freelist = r->next;
+
+    // freelist에서 빠져서
+    kmem.free_pages--;
+
+    // 신규 할당 page refcount: 1
+    kmem.refcnt[pa2idx((void *)r)] = 1;
+  }
+
   release(&kmem.lock);
 
-  if(r)
-    memset((char*)r, 5, PGSIZE); // fill with junk
-  return (void*)r;
+  if (r)
+    memset((char *)r, 5, PGSIZE); // fill with junk
+
+  return (void *)r;
 }
 
 uint64
@@ -98,4 +148,33 @@ meminfo(void)
   release(&kmem.lock);
 
   return bytes;
+}
+
+void kaddref(void *pa)
+{
+  if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
+    panic("kaddref");
+
+  acquire(&kmem.lock);
+
+  int idx = pa2idx(pa);
+
+  // freelist의 page는 공유 대상 아님
+  if (kmem.refcnt[idx] < 1)
+    panic("kaddref: refcnt");
+
+  kmem.refcnt[idx]++;
+
+  release(&kmem.lock);
+}
+
+int freemem(void)
+{
+  int n;
+
+  acquire(&kmem.lock);
+  n = kmem.free_pages;
+  release(&kmem.lock);
+
+  return n;
 }
