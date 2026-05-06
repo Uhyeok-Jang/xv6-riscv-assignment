@@ -69,7 +69,7 @@ usertrap(void)
   } else if ((which_dev = devintr()) != 0) {
     // ok
   } else if (r_scause() == 13 || r_scause() == 15) {
-    // 13: load page fault, 15: store/write page fault.
+    // 13: load page fault, 15: store/write page fault
     int write_fault = (r_scause() == 15);
 
     // mmap lazy allocation 시도
